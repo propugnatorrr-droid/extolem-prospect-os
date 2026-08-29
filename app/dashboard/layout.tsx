@@ -3,12 +3,13 @@
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, ChevronLeft, Menu, PhoneCall, LogOut } from "lucide-react"
+import { LayoutDashboard, ChevronLeft, Menu, PhoneCall, LogOut, Users } from "lucide-react"
 import { useState } from "react"
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
   { href: "/dashboard/prospecting", icon: PhoneCall, label: "Prospecting" },
+  { href: "/dashboard/leads", icon: Users, label: "Leads" },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

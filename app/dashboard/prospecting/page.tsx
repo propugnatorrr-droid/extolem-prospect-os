@@ -92,6 +92,7 @@ export default function ProspectingPage() {
   const [nlQuery, setNlQuery] = useState("")
   const [parsing, setParsing] = useState(false)
   const [parseSummary, setParseSummary] = useState<string | null>(null)
+  const [parseMode, setParseMode] = useState<string | null>(null)
 
   useEffect(() => {
     fetch("/api/operator/context")
@@ -104,35 +105,14 @@ export default function ProspectingPage() {
     setSelectedSources((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
   }
 
-  async function runParse() {
-    if (!nlQuery.trim()) return
-    setParsing(true)
-    setParseSummary(null)
-    setError(null)
-    try {
-      const res = await fetch("/api/discovery/parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: nlQuery }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Could not understand that.")
-      setParseSummary(data.summary)
-      if (data.inScope) {
-        setCategories(data.categories.join(", "))
-        setLocation(data.location)
-        setRadiusKm(data.radiusKm)
-        setMaxResults(data.maxResults)
-        setRequirePhone(data.requirePhone)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong")
-    } finally {
-      setParsing(false)
-    }
-  }
-
-  async function runSearch() {
+  async function startDiscovery(params: {
+    categories: string[]
+    location: string
+    radiusKm: number
+    maxResults: number
+    requirePhone: boolean
+    sources: string[]
+  }) {
     setLoading(true)
     setError(null)
     setSourceErrors({})
@@ -140,14 +120,7 @@ export default function ProspectingPage() {
       const startRes = await fetch("/api/discovery/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          categories: categories.split(",").map((c) => c.trim()).filter(Boolean),
-          location,
-          radiusKm,
-          maxResults,
-          requirePhone,
-          sources: selectedSources,
-        }),
+        body: JSON.stringify(params),
       })
       const startData = await startRes.json()
       if (!startRes.ok) throw new Error(startData.error || "Search failed")
@@ -161,6 +134,58 @@ export default function ProspectingPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function runParse() {
+    if (!nlQuery.trim()) return
+    setParsing(true)
+    setParseSummary(null)
+    setParseMode(null)
+    setError(null)
+    try {
+      const res = await fetch("/api/discovery/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: nlQuery }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Could not understand that.")
+      setParseSummary(data.summary)
+      setParseMode(data.mode)
+      if (data.mode === "search") {
+        setCategories(data.categories.join(", "))
+        setLocation(data.location)
+        setRadiusKm(data.radiusKm)
+        setMaxResults(data.maxResults)
+        setRequirePhone(data.requirePhone)
+        // Run immediately with the parsed values rather than waiting on state
+        // (setState above hasn't landed yet in this closure) or making Manav
+        // click a second button after already describing what he wants.
+        await startDiscovery({
+          categories: data.categories,
+          location: data.location,
+          radiusKm: data.radiusKm,
+          maxResults: data.maxResults,
+          requirePhone: data.requirePhone,
+          sources: selectedSources,
+        })
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong")
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  function runSearch() {
+    return startDiscovery({
+      categories: categories.split(",").map((c) => c.trim()).filter(Boolean),
+      location,
+      radiusKm,
+      maxResults,
+      requirePhone,
+      sources: selectedSources,
+    })
   }
 
   async function runAudit(businessId: string) {
@@ -227,7 +252,11 @@ export default function ProspectingPage() {
               {parsing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             </Button>
           </div>
-          {parseSummary && <p className="text-sm text-emerald-400">{parseSummary}</p>}
+          {parseSummary && (
+            <p className={`text-sm ${parseMode === "search" ? "text-emerald-400" : parseMode === "refuse" ? "text-yellow-500" : "text-blue-400"}`}>
+              {parseSummary}
+            </p>
+          )}
         </CardContent>
       </Card>
 
