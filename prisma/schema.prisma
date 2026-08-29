@@ -40,7 +40,7 @@ model Business {
   reviewCount Int?
   placeId     String?   @unique
   abn         String?
-  status      String    @default("new") // new, reviewed, called, contacted, qualified, not_interested, do_not_contact
+  status      String    @default("new") // new, saved, contacted, qualified, not_interested, do_not_contact
   notes       String?
   metadata    String?   // JSON blob for anything not modeled yet
 

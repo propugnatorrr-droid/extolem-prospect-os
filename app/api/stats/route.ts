@@ -12,7 +12,7 @@ export async function GET() {
     prisma.opportunity.groupBy({ by: ["offer"], _count: { offer: true }, orderBy: { _count: { offer: "desc" } }, take: 6 }),
   ])
 
-  const auditedCount = await prisma.business.count({ where: { status: "reviewed" } })
+  const auditedCount = await prisma.business.count({ where: { audits: { some: {} } } })
 
   return NextResponse.json({
     businessCount,

@@ -3,6 +3,7 @@ import { z } from "zod"
 import { prisma } from "@/lib/db"
 import { runWebsiteAudit } from "@/lib/audit/run"
 import { scoreOpportunities } from "@/lib/opportunity/engine"
+import { searchAbnByName, isAbnLookupConfigured } from "@/lib/abn/lookup"
 
 // Site fetch + contact-page fetch + PageSpeed API can take 20-30s combined;
 // Vercel's default is 10s, which would kill this mid-audit.
@@ -47,7 +48,15 @@ export async function POST(request: Request) {
     })
   }
 
-  await prisma.business.update({ where: { id: business.id }, data: { status: "reviewed" } })
+  // Best-effort ABN validation. No-ops until ABR_GUID is configured; never
+  // blocks or fails the audit if the lookup doesn't turn up a clean match.
+  if (!business.abn && isAbnLookupConfigured()) {
+    const matches = await searchAbnByName(business.name, business.postcode || undefined)
+    const bestMatch = matches.find((m) => m.isCurrent && m.score >= 80)
+    if (bestMatch) {
+      await prisma.business.update({ where: { id: business.id }, data: { abn: bestMatch.abn } })
+    }
+  }
 
   return NextResponse.json({ opportunities })
 }
