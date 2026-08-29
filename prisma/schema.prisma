@@ -97,3 +97,110 @@ model Setting {
   key   String @unique
   value String // JSON value
 }
+
+// --- Extolem Prospect OS: business-centric prospecting model ---
+
+model SearchRun {
+  id          String     @id @default(cuid())
+  query       String     // raw natural-language request
+  categories  String     // JSON array
+  location    String
+  radiusKm    Float?
+  sources     String     // JSON array of source ids used
+  status      String     @default("running") // running, completed, failed
+  resultCount Int        @default(0)
+  error       String?
+  businesses  Business[]
+  createdAt   DateTime   @default(now())
+  completedAt DateTime?
+}
+
+model Business {
+  id          String    @id @default(cuid())
+  name        String
+  category    String?
+  phone       String?
+  website     String?
+  street      String?
+  suburb      String?
+  state       String?
+  postcode    String?
+  country     String    @default("AU")
+  latitude    Float?
+  longitude   Float?
+  rating      Float?
+  reviewCount Int?
+  placeId     String?   @unique
+  abn         String?
+  status      String    @default("new") // new, reviewed, called, contacted, qualified, not_interested, do_not_contact
+  notes       String?
+  metadata    String?   // JSON blob for anything not modeled yet
+
+  searchRunId String?
+  searchRun   SearchRun? @relation(fields: [searchRunId], references: [id])
+
+  sources       BusinessSource[]
+  contacts      Contact[]
+  opportunities Opportunity[]
+  audits        WebsiteAudit[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([phone])
+  @@index([website])
+  @@index([suburb])
+  @@index([postcode])
+  @@index([status])
+}
+
+model BusinessSource {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  source     String   // google_maps_apify, yellowpages_au, openstreetmap, google_search
+  sourceId   String?
+  sourceUrl  String?
+  raw        String?  // JSON snapshot of the original record
+  fetchedAt  DateTime @default(now())
+
+  @@index([businessId])
+  @@unique([businessId, source, sourceId])
+}
+
+model Contact {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  type       String   // phone, mobile, email, facebook, instagram, linkedin, booking_url, contact_form
+  value      String
+  label      String?
+  createdAt  DateTime @default(now())
+
+  @@index([businessId])
+}
+
+model WebsiteAudit {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  url        String
+  findings   String   // JSON array of AuditFinding
+  score      Int?
+  createdAt  DateTime @default(now())
+
+  @@index([businessId])
+}
+
+model Opportunity {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  offer      String   // website, ai_chatbot, ai_receptionist, review_automation, seo, erp, etc.
+  score      Int
+  confidence Float
+  reasons    String   // JSON array of strings
+  createdAt  DateTime @default(now())
+
+  @@index([businessId])
+}

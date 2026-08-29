@@ -6,12 +6,13 @@ import { cn } from "@/lib/utils"
 import {
   LayoutDashboard, Users, Megaphone, Building2, Search,
   Mail, Download, Settings, MessageSquare, ChevronLeft, Menu,
-  Kanban, Radio, GitBranch, BarChart3, Shield, TrendingUp
+  Kanban, Radio, GitBranch, BarChart3, Shield, TrendingUp, PhoneCall
 } from "lucide-react"
 import { useState } from "react"
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
+  { href: "/dashboard/prospecting", icon: PhoneCall, label: "Prospecting" },
   { href: "/dashboard/leads", icon: Users, label: "Leads" },
   { href: "/dashboard/pipeline", icon: Kanban, label: "Pipeline" },
   { href: "/dashboard/campaigns", icon: Megaphone, label: "Campaigns" },
@@ -42,7 +43,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-emerald-500 flex items-center justify-center font-bold text-sm flex-shrink-0">
             K
           </div>
-          {!collapsed && <span className="font-bold text-lg">KeeLead</span>}
+          {!collapsed && <span className="font-bold text-lg">Extolem ProspectOS</span>}
           <button
             onClick={() => setCollapsed(!collapsed)}
             className="ml-auto text-zinc-400 hover:text-white transition"
