@@ -36,13 +36,19 @@ export function scoreOpportunities(business: BusinessSignal, findings: AuditFind
     )
     const checks = findingValue<ConversionChecks>(findings, "conversion_checks")
     const reachable = findingValue<boolean>(findings, "site_reachable")
+    const httpStatus = findingValue<number | null>(findings, "http_status")
 
     if (reachable === false) {
+      const isBotBlock = httpStatus === 403 || httpStatus === 429
       results.push({
         offer: "website_rebuild",
-        score: 90,
-        confidence: 0.85,
-        reasons: ["Listed website did not load (dead link, expired domain, or broken hosting)"],
+        score: isBotBlock ? 40 : 90,
+        confidence: isBotBlock ? 0.3 : 0.85,
+        reasons: [
+          isBotBlock
+            ? `Site returned a ${httpStatus} to an automated check, likely bot protection rather than a real outage, worth opening it in a browser before assuming it's down`
+            : "Listed website did not load (dead link, expired domain, or broken hosting)",
+        ],
       })
     } else {
       const perfReasons: string[] = []
