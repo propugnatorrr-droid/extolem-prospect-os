@@ -49,7 +49,7 @@ export function scoreOpportunities(business: BusinessSignal, findings: AuditFind
       if (pagespeed?.performanceScore != null && pagespeed.performanceScore < 50) {
         perfReasons.push(`PageSpeed performance score is ${pagespeed.performanceScore}/100 on mobile`)
       }
-      if (checks && !checks.hasMobileViewport) perfReasons.push("No mobile viewport tag — site isn't optimised for phones")
+      if (checks && !checks.hasMobileViewport) perfReasons.push("No mobile viewport tag, site isn't optimised for phones")
       if (pagespeed?.isMobileFriendly === false) perfReasons.push("PageSpeed flags the site as not mobile-friendly")
       if (perfReasons.length) {
         results.push({ offer: "website_optimisation", score: 70, confidence: 0.75, reasons: perfReasons })
@@ -79,7 +79,7 @@ export function scoreOpportunities(business: BusinessSignal, findings: AuditFind
           offer: "lead_followup_automation",
           score: 50,
           confidence: 0.5,
-          reasons: ["No contact form — phone is the only lead channel, easy to lose after-hours enquiries"],
+          reasons: ["No contact form, phone is the only lead channel and it's easy to lose after-hours enquiries"],
         })
       }
     }
@@ -105,8 +105,8 @@ export function scoreOpportunities(business: BusinessSignal, findings: AuditFind
       confidence: 0.55,
       reasons: [
         business.hasWebsite
-          ? "No click-to-call link on the website — calls likely go through a receptionist or voicemail with no digital backup"
-          : "No website at all — phone is the only contact channel, missed calls have no fallback",
+          ? "No click-to-call link on the website, calls likely go through a receptionist or voicemail with no digital backup"
+          : "No website at all, phone is the only contact channel and missed calls have no fallback",
       ],
     })
   }
@@ -116,7 +116,7 @@ export function scoreOpportunities(business: BusinessSignal, findings: AuditFind
       offer: "review_automation",
       score: 40,
       confidence: 0.4,
-      reasons: [`Only ${business.reviewCount} reviews found — a review-request flow after each job would help`],
+      reasons: [`Only ${business.reviewCount} reviews found, a review-request flow after each job would help`],
     })
   }
   if (business.rating != null && business.rating < 4.3 && business.reviewCount != null && business.reviewCount >= 5) {
@@ -124,7 +124,7 @@ export function scoreOpportunities(business: BusinessSignal, findings: AuditFind
       offer: "review_automation",
       score: 55,
       confidence: 0.5,
-      reasons: [`Rating is ${business.rating}/5 across ${business.reviewCount} reviews — worth checking recent complaints before the call`],
+      reasons: [`Rating is ${business.rating}/5 across ${business.reviewCount} reviews, worth checking recent complaints before the call`],
     })
   }
 

@@ -36,10 +36,10 @@ export default function DashboardPage() {
   }, [])
 
   const cards = [
-    { label: "Businesses found", value: stats?.businessCount ?? "—", icon: Building2, color: "text-blue-400" },
-    { label: "Searches run", value: stats?.searchRunCount ?? "—", icon: Search, color: "text-purple-400" },
-    { label: "Businesses audited", value: stats?.auditedCount ?? "—", icon: CheckCircle2, color: "text-emerald-400" },
-    { label: "Opportunities found", value: stats?.opportunityCount ?? "—", icon: Target, color: "text-orange-400" },
+    { label: "Businesses found", value: stats?.businessCount ?? "...", icon: Building2, color: "text-blue-400" },
+    { label: "Searches run", value: stats?.searchRunCount ?? "...", icon: Search, color: "text-purple-400" },
+    { label: "Businesses audited", value: stats?.auditedCount ?? "...", icon: CheckCircle2, color: "text-emerald-400" },
+    { label: "Opportunities found", value: stats?.opportunityCount ?? "...", icon: Target, color: "text-orange-400" },
   ]
 
   return (
@@ -47,7 +47,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Overview</h1>
-          <p className="text-zinc-400 text-sm mt-1">Real numbers from your prospecting activity — nothing here is simulated.</p>
+          <p className="text-zinc-400 text-sm mt-1">Real numbers from your prospecting activity. Nothing here is simulated.</p>
         </div>
         <Link href="/dashboard/prospecting">
           <Button size="sm">
@@ -77,7 +77,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {stats && stats.recentBusinesses.length === 0 && (
-              <p className="text-sm text-zinc-500">No businesses yet — run a search in Prospecting.</p>
+              <p className="text-sm text-zinc-500">No businesses yet. Run a search in Prospecting.</p>
             )}
             <div className="space-y-2">
               {stats?.recentBusinesses.map((b) => (
@@ -96,7 +96,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {stats && stats.topOffers.length === 0 && (
-              <p className="text-sm text-zinc-500">No audits run yet — audit a business from Prospecting to see what it's missing.</p>
+              <p className="text-sm text-zinc-500">No audits run yet. Audit a business from Prospecting to see what it's missing.</p>
             )}
             <div className="space-y-3">
               {stats?.topOffers.map((o) => (

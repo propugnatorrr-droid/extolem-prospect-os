@@ -33,9 +33,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# prisma
-prisma/keelead.db
-prisma/keelead.db-journal
-
-# cli
+# logs
 *.log
+
+# local sqlite artifacts (project uses Postgres now, but just in case)
+*.db
+*.db-journal

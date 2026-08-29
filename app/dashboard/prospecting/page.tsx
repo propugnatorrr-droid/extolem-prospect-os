@@ -7,9 +7,16 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { Phone, Globe, MapPin, Star, Loader2, PhoneCall, Car, CloudSun, Search as SearchIcon } from "lucide-react"
+import { Phone, Globe, MapPin, Star, Loader2, PhoneCall, Car, CloudSun, Search as SearchIcon, Sparkles } from "lucide-react"
 
 const NEARBY_KM = 20 // within this radius, worth a physical drop-in; beyond it, phone only
+
+const SOURCE_LABELS: Record<string, string> = {
+  openstreetmap: "Map data",
+  google_maps_apify: "Google Maps",
+  yellowpages_au: "Yellow Pages",
+  google_search_apify: "Web search",
+}
 
 const OFFER_LABELS: Record<string, string> = {
   website_rebuild: "Needs a website",
@@ -62,10 +69,10 @@ interface OperatorContext {
 }
 
 const ALL_SOURCES = [
-  { id: "openstreetmap", label: "OpenStreetMap (free, always on)", free: true },
-  { id: "google_maps_apify", label: "Google Maps (Apify — costs credits)", free: false },
-  { id: "yellowpages_au", label: "Yellow Pages AU (Apify — costs credits)", free: false },
-  { id: "google_search_apify", label: "Google Search (Apify — costs credits)", free: false },
+  { id: "openstreetmap", label: "Map data" },
+  { id: "google_maps_apify", label: "Google Maps" },
+  { id: "yellowpages_au", label: "Yellow Pages" },
+  { id: "google_search_apify", label: "Web search" },
 ] as const
 
 export default function ProspectingPage() {
@@ -82,6 +89,9 @@ export default function ProspectingPage() {
   const [operatorContext, setOperatorContext] = useState<OperatorContext | null>(null)
   const [auditingId, setAuditingId] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [nlQuery, setNlQuery] = useState("")
+  const [parsing, setParsing] = useState(false)
+  const [parseSummary, setParseSummary] = useState<string | null>(null)
 
   useEffect(() => {
     fetch("/api/operator/context")
@@ -92,6 +102,34 @@ export default function ProspectingPage() {
 
   const toggleSource = (id: string) => {
     setSelectedSources((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
+  }
+
+  async function runParse() {
+    if (!nlQuery.trim()) return
+    setParsing(true)
+    setParseSummary(null)
+    setError(null)
+    try {
+      const res = await fetch("/api/discovery/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: nlQuery }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Could not understand that.")
+      setParseSummary(data.summary)
+      if (data.inScope) {
+        setCategories(data.categories.join(", "))
+        setLocation(data.location)
+        setRadiusKm(data.radiusKm)
+        setMaxResults(data.maxResults)
+        setRequirePhone(data.requirePhone)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong")
+    } finally {
+      setParsing(false)
+    }
   }
 
   async function runSearch() {
@@ -173,6 +211,28 @@ export default function ProspectingPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-blue-400" /> Just tell me what you're after
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex gap-2">
+            <Input
+              value={nlQuery}
+              onChange={(e) => setNlQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && runParse()}
+              placeholder="e.g. find me plumbers nearby with no website, or roofers an hour away"
+            />
+            <Button onClick={runParse} disabled={parsing || !nlQuery.trim()}>
+              {parsing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            </Button>
+          </div>
+          {parseSummary && <p className="text-sm text-emerald-400">{parseSummary}</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-base">Search</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -219,7 +279,7 @@ export default function ProspectingPage() {
 
           {error && <p className="text-sm text-red-400">{error}</p>}
           {Object.entries(sourceErrors).map(([source, msg]) => (
-            <p key={source} className="text-xs text-yellow-500">{source}: {msg}</p>
+            <p key={source} className="text-xs text-yellow-500">{SOURCE_LABELS[source] || source}: {msg}</p>
           ))}
         </CardContent>
       </Card>
@@ -257,12 +317,12 @@ export default function ProspectingPage() {
                           className="text-[10px] flex items-center gap-1"
                         >
                           {b.distanceFromHomeKm <= NEARBY_KM ? <Car className="w-3 h-3" /> : <Phone className="w-3 h-3" />}
-                          {b.distanceFromHomeKm}km — {b.distanceFromHomeKm <= NEARBY_KM ? "drive by" : "call only"}
+                          {b.distanceFromHomeKm}km, {b.distanceFromHomeKm <= NEARBY_KM ? "drive by" : "call only"}
                         </Badge>
                       )}
                       <div className="flex gap-1">
                         {b.sources.map((s) => (
-                          <Badge key={s.id} variant="outline" className="text-[10px]">{s.source}</Badge>
+                          <Badge key={s.id} variant="outline" className="text-[10px]">{SOURCE_LABELS[s.source] || s.source}</Badge>
                         ))}
                       </div>
                       <Button

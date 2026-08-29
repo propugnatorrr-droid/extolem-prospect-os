@@ -15,7 +15,7 @@ async function runSource(
 ): Promise<{ source: DiscoverySource; records: NormalizedBusiness[]; error?: string }> {
   try {
     if (APIFY_SOURCES.includes(source) && !isApifyConfigured()) {
-      return { source, records: [], error: "APIFY_TOKEN not configured — source skipped" }
+      return { source, records: [], error: "This source is not set up yet." }
     }
     switch (source) {
       case "openstreetmap":
@@ -28,7 +28,10 @@ async function runSource(
         return { source, records: await searchGoogleApify(request) }
     }
   } catch (err) {
-    return { source, records: [], error: err instanceof Error ? err.message : String(err) }
+    // Log the real cause server-side only; the UI only ever sees a generic
+    // message so implementation/vendor details never surface to end users.
+    console.error(`discovery source ${source} failed:`, err)
+    return { source, records: [], error: "This search source ran into a problem and was skipped." }
   }
 }
 

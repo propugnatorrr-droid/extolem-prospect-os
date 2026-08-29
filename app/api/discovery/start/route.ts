@@ -33,9 +33,7 @@ export async function POST(request: Request) {
     const result = await runDiscovery(parsed.data)
     return NextResponse.json(result)
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Discovery run failed" },
-      { status: 500 },
-    )
+    console.error("discovery run failed:", err)
+    return NextResponse.json({ error: "Search failed. Please try again." }, { status: 500 })
   }
 }
