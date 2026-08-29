@@ -7,13 +7,34 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { Phone, Globe, MapPin, Star, Loader2, PhoneCall, Car, CloudSun } from "lucide-react"
+import { Phone, Globe, MapPin, Star, Loader2, PhoneCall, Car, CloudSun, Search as SearchIcon } from "lucide-react"
 
 const NEARBY_KM = 20 // within this radius, worth a physical drop-in; beyond it, phone only
+
+const OFFER_LABELS: Record<string, string> = {
+  website_rebuild: "Needs a website",
+  website_optimisation: "Website needs work",
+  seo: "SEO gaps",
+  ai_chatbot: "No chatbot",
+  ai_receptionist: "AI receptionist fit",
+  missed_call_recovery: "Missed-call recovery",
+  review_automation: "Review automation",
+  online_booking: "No online booking",
+  lead_followup_automation: "Lead follow-up gap",
+  erp_opportunity: "Disconnected systems",
+}
 
 interface BusinessSourceRow {
   id: string
   source: string
+}
+
+interface OpportunityRow {
+  id: string
+  offer: string
+  score: number
+  confidence: number
+  reasons: string // JSON string
 }
 
 interface Business {
@@ -30,6 +51,7 @@ interface Business {
   reviewCount: number | null
   status: string
   sources: BusinessSourceRow[]
+  opportunities: OpportunityRow[]
   distanceFromHomeKm: number | null
 }
 
@@ -58,6 +80,8 @@ export default function ProspectingPage() {
   const [sourceErrors, setSourceErrors] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
   const [operatorContext, setOperatorContext] = useState<OperatorContext | null>(null)
+  const [auditingId, setAuditingId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   useEffect(() => {
     fetch("/api/operator/context")
@@ -101,6 +125,30 @@ export default function ProspectingPage() {
     }
   }
 
+  async function runAudit(businessId: string) {
+    setAuditingId(businessId)
+    try {
+      await fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ businessId }),
+      })
+      await refreshBusiness(businessId)
+      setExpandedId(businessId)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Audit failed")
+    } finally {
+      setAuditingId(null)
+    }
+  }
+
+  async function refreshBusiness(businessId: string) {
+    const res = await fetch(`/api/discovery/business/${businessId}`)
+    if (!res.ok) return
+    const data = await res.json()
+    setBusinesses((prev) => prev.map((b) => (b.id === businessId ? { ...b, ...data.business } : b)))
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -108,7 +156,7 @@ export default function ProspectingPage() {
           <h1 className="text-2xl font-bold">
             {operatorContext?.profile.firstName ? `${operatorContext.profile.firstName}'s prospecting run` : "Prospecting"}
           </h1>
-          <p className="text-sm text-zinc-400">Find real businesses near you to call. Discovery only — audits and opportunity scoring land in the next build phase.</p>
+          <p className="text-sm text-zinc-400">Find real businesses near you, audit their site, and see what they're missing before you call.</p>
         </div>
         {operatorContext && (
           <div className="text-right text-xs text-zinc-400 space-y-0.5">
@@ -184,39 +232,81 @@ export default function ProspectingPage() {
           <CardContent>
             <div className="space-y-2">
               {businesses.map((b) => (
-                <div key={b.id} className="flex items-start justify-between p-3 rounded-lg border border-white/10 hover:bg-white/5">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{b.name}</span>
-                      {b.category && <Badge variant="secondary">{b.category}</Badge>}
+                <div key={b.id} className="p-3 rounded-lg border border-white/10 hover:bg-white/5">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{b.name}</span>
+                        {b.category && <Badge variant="secondary">{b.category}</Badge>}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-4 mt-1 text-xs text-zinc-400">
+                        {b.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{b.phone}</span>}
+                        {b.website && <span className="flex items-center gap-1"><Globe className="w-3 h-3" />{b.website}</span>}
+                        {(b.suburb || b.postcode) && (
+                          <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{[b.suburb, b.state, b.postcode].filter(Boolean).join(", ")}</span>
+                        )}
+                        {b.rating && (
+                          <span className="flex items-center gap-1"><Star className="w-3 h-3" />{b.rating} ({b.reviewCount ?? 0})</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-4 mt-1 text-xs text-zinc-400">
-                      {b.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{b.phone}</span>}
-                      {b.website && <span className="flex items-center gap-1"><Globe className="w-3 h-3" />{b.website}</span>}
-                      {(b.suburb || b.postcode) && (
-                        <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{[b.suburb, b.state, b.postcode].filter(Boolean).join(", ")}</span>
+                    <div className="flex flex-col items-end gap-1">
+                      {b.distanceFromHomeKm != null && (
+                        <Badge
+                          variant={b.distanceFromHomeKm <= NEARBY_KM ? "default" : "outline"}
+                          className="text-[10px] flex items-center gap-1"
+                        >
+                          {b.distanceFromHomeKm <= NEARBY_KM ? <Car className="w-3 h-3" /> : <Phone className="w-3 h-3" />}
+                          {b.distanceFromHomeKm}km — {b.distanceFromHomeKm <= NEARBY_KM ? "drive by" : "call only"}
+                        </Badge>
                       )}
-                      {b.rating && (
-                        <span className="flex items-center gap-1"><Star className="w-3 h-3" />{b.rating} ({b.reviewCount ?? 0})</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    {b.distanceFromHomeKm != null && (
-                      <Badge
-                        variant={b.distanceFromHomeKm <= NEARBY_KM ? "default" : "outline"}
-                        className="text-[10px] flex items-center gap-1"
+                      <div className="flex gap-1">
+                        {b.sources.map((s) => (
+                          <Badge key={s.id} variant="outline" className="text-[10px]">{s.source}</Badge>
+                        ))}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-[11px] mt-1"
+                        disabled={auditingId === b.id}
+                        onClick={() => runAudit(b.id)}
                       >
-                        {b.distanceFromHomeKm <= NEARBY_KM ? <Car className="w-3 h-3" /> : <Phone className="w-3 h-3" />}
-                        {b.distanceFromHomeKm}km — {b.distanceFromHomeKm <= NEARBY_KM ? "drive by" : "call only"}
-                      </Badge>
-                    )}
-                    <div className="flex gap-1">
-                      {b.sources.map((s) => (
-                        <Badge key={s.id} variant="outline" className="text-[10px]">{s.source}</Badge>
-                      ))}
+                        {auditingId === b.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <SearchIcon className="w-3 h-3 mr-1" />}
+                        {b.opportunities.length ? "Re-audit" : "Audit"}
+                      </Button>
                     </div>
                   </div>
+
+                  {b.opportunities.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-white/5">
+                      <div className="flex flex-wrap gap-1.5">
+                        {b.opportunities.map((o) => (
+                          <Badge
+                            key={o.id}
+                            variant={expandedId === b.id ? "default" : "outline"}
+                            className="text-[10px] cursor-pointer"
+                            onClick={() => setExpandedId(expandedId === b.id ? null : b.id)}
+                          >
+                            {OFFER_LABELS[o.offer] || o.offer} · {o.score}
+                          </Badge>
+                        ))}
+                      </div>
+                      {expandedId === b.id && (
+                        <ul className="mt-2 space-y-1 text-xs text-zinc-400 list-disc list-inside">
+                          {b.opportunities.flatMap((o) => {
+                            let reasons: string[] = []
+                            try {
+                              reasons = JSON.parse(o.reasons)
+                            } catch {
+                              reasons = []
+                            }
+                            return reasons.map((r, i) => <li key={`${o.id}-${i}`}>{r}</li>)
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

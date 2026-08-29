@@ -1,35 +1,26 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import {
-  LayoutDashboard, Users, Megaphone, Building2, Search,
-  Mail, Download, Settings, MessageSquare, ChevronLeft, Menu,
-  Kanban, Radio, GitBranch, BarChart3, Shield, TrendingUp, PhoneCall
-} from "lucide-react"
+import { LayoutDashboard, ChevronLeft, Menu, PhoneCall, LogOut } from "lucide-react"
 import { useState } from "react"
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
   { href: "/dashboard/prospecting", icon: PhoneCall, label: "Prospecting" },
-  { href: "/dashboard/leads", icon: Users, label: "Leads" },
-  { href: "/dashboard/pipeline", icon: Kanban, label: "Pipeline" },
-  { href: "/dashboard/campaigns", icon: Megaphone, label: "Campaigns" },
-  { href: "/dashboard/sequences", icon: GitBranch, label: "Sequences" },
-  { href: "/dashboard/research", icon: Building2, label: "Research" },
-  { href: "/dashboard/finder", icon: Search, label: "Finder" },
-  { href: "/dashboard/verify", icon: Mail, label: "Verify" },
-  { href: "/dashboard/signals", icon: Radio, label: "Signals" },
-  { href: "/dashboard/analytics", icon: BarChart3, label: "Analytics" },
-  { href: "/dashboard/export", icon: Download, label: "Export" },
-  { href: "/dashboard/compliance", icon: Shield, label: "Compliance" },
-  { href: "/dashboard/settings", icon: Settings, label: "Settings" },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" })
+    router.push("/login")
+    router.refresh()
+  }
 
   return (
     <div className="flex h-screen bg-black">
@@ -41,7 +32,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Logo */}
         <div className="h-14 border-b border-white/10 flex items-center px-4 gap-3">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-emerald-500 flex items-center justify-center font-bold text-sm flex-shrink-0">
-            K
+            E
           </div>
           {!collapsed && <span className="font-bold text-lg">Extolem ProspectOS</span>}
           <button
@@ -74,15 +65,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </nav>
 
-        {/* Chat Link */}
         <div className="p-2 border-t border-white/10">
-          <Link
-            href="/chat"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-zinc-400 hover:bg-white/5 hover:text-white transition"
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-zinc-400 hover:bg-white/5 hover:text-white transition"
           >
-            <MessageSquare className="w-4 h-4 flex-shrink-0" />
-            {!collapsed && <span>AI Chat</span>}
-          </Link>
+            <LogOut className="w-4 h-4 flex-shrink-0" />
+            {!collapsed && <span>Log out</span>}
+          </button>
         </div>
       </div>
 

@@ -6,8 +6,8 @@ import { Toaster } from "sonner"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "KeeLead — Open Source Lead Generation Engine",
-  description: "AI-powered lead generation platform. Find leads, verify emails, research companies, and grow your business.",
+  title: "Extolem ProspectOS",
+  description: "Private prospecting tool for Extolem.",
   icons: { icon: "/favicon.svg" },
 }
 

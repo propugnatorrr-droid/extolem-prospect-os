@@ -1,7 +1,7 @@
 {
-  "name": "keelead",
+  "name": "extolem-prospect-os",
   "version": "1.0.0",
-  "description": "Open Source Lead Generation Engine",
+  "description": "Private prospecting tool for Extolem",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -11,10 +11,7 @@
     "db:push": "npx prisma db push",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:studio": "npx prisma studio",
-    "db:reset": "npx prisma db push --force-reset && npx tsx prisma/seed.ts",
-    "keelead": "npx tsx cli/index.ts",
-    "mcp": "npx tsx mcp/server.ts",
-    "agent": "npx tsx mcp/server.ts --stdio"
+    "db:reset": "npx prisma db push --force-reset"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -42,12 +39,9 @@
     "cmdk": "^1.0.4",
     "lucide-react": "^0.468.0",
     "next": "14.2.20",
-    "playwright": "^1.40.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-markdown": "^9.0.1",
     "recharts": "^2.15.0",
-    "remark-gfm": "^4.0.0",
     "sonner": "^1.7.1",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",

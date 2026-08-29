@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { getOperatorProfile } from "@/lib/operator/profile"
 import { getCurrentWeather, weatherLabel } from "@/lib/operator/weather"
 
+export const dynamic = "force-dynamic"
+
 export async function GET() {
   const profile = await getOperatorProfile()
 

@@ -2,6 +2,12 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { runDiscovery } from "@/lib/discovery/run"
 
+// Apify actors run synchronously here (no queue/worker) and can take 30-90s+
+// for larger maxResults. Vercel Hobby plans hard-cap functions at 60s
+// regardless of this value — keep maxResults modest (~20-30) per search on
+// Hobby. Pro plans (or Fluid compute) can use the full 300s.
+export const maxDuration = 300
+
 const requestSchema = z.object({
   categories: z.array(z.string().min(2)).min(1),
   location: z.string().min(2),
