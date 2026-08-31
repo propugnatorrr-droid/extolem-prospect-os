@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import type { DiscoveryRequest, NormalizedBusiness } from "./types"
+import { enrichWebsiteContacts } from "@/lib/enrichment/website-contact"
 
 function cleanString(value?: string): string | undefined {
   if (!value) return undefined
@@ -272,39 +273,92 @@ export async function persistBusinesses(
   records: NormalizedBusiness[],
   request: DiscoveryRequest,
 ): Promise<number> {
-  const filtered = records
-    .filter((record) => passesFilters(record, request))
+  const uniqueRecords = Array.from(
+    new Map(
+      records
+        .filter((record) => record.name?.trim())
+        .map((record) => {
+          const key =
+            record.sourceId ||
+            normalizePhone(record.phone) ||
+            normalizeWebsite(record.website) ||
+            `${normalizeName(record.name)}:${record.postcode || ""}`
+
+          return [key, record] as const
+        }),
+    ).values(),
+  )
+
+  const enrichmentLimit = Math.min(
+    Number(
+      process.env.WEBSITE_ENRICHMENT_LIMIT || 12,
+    ),
+    25,
+  )
+
+  const enrichedRecords =
+    process.env.ENABLE_WEBSITE_ENRICHMENT === "false"
+      ? uniqueRecords
+      : await enrichWebsiteContacts(
+          uniqueRecords,
+          enrichmentLimit,
+        )
+
+  const filtered = enrichedRecords
+    .filter((record) =>
+      passesFilters(record, request),
+    )
     .slice(0, request.maxResults)
 
-  for (const record of filtered) {
-    const business = await createOrMergeBusiness(record)
+  const batchSize = 8
 
-    await prisma.searchRunBusiness.upsert({
-      where: {
-        searchRunId_businessId: {
-          searchRunId,
-          businessId: business.id,
-        },
-      },
-      create: {
-        searchRunId,
-        businessId: business.id,
-      },
-      update: {},
-    })
-
-    await saveSource(business.id, record)
-    await saveContact(
-      business.id,
-      "phone",
-      normalizePhone(record.phone),
-      record.sourceUrl,
+  for (
+    let index = 0;
+    index < filtered.length;
+    index += batchSize
+  ) {
+    const batch = filtered.slice(
+      index,
+      index + batchSize,
     )
-    await saveContact(
-      business.id,
-      "email",
-      record.email?.toLowerCase(),
-      record.sourceUrl,
+
+    await Promise.all(
+      batch.map(async (record) => {
+        const business =
+          await createOrMergeBusiness(record)
+
+        await prisma.searchRunBusiness.upsert({
+          where: {
+            searchRunId_businessId: {
+              searchRunId,
+              businessId: business.id,
+            },
+          },
+          create: {
+            searchRunId,
+            businessId: business.id,
+          },
+          update: {},
+        })
+
+        await Promise.all([
+          saveSource(business.id, record),
+          saveContact(
+            business.id,
+            "phone",
+            normalizePhone(record.phone),
+            record.sourceUrl ||
+              record.website,
+          ),
+          saveContact(
+            business.id,
+            "email",
+            record.email?.toLowerCase(),
+            record.sourceUrl ||
+              record.website,
+          ),
+        ])
+      }),
     )
   }
 
