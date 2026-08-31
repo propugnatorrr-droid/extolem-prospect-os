@@ -5,6 +5,7 @@ import type {
 } from "./types"
 import { searchTomTom } from "./sources/tomtom"
 import { searchGeoapify } from "./sources/geoapify"
+import { searchGooglePlaces } from "./sources/google-places"
 import { searchOpenStreetMap } from "./sources/openstreetmap"
 
 export function isDirectSource(
@@ -12,10 +13,12 @@ export function isDirectSource(
 ): source is
   | "tomtom_api"
   | "geoapify_api"
+  | "google_places_api"
   | "openstreetmap" {
   return (
     source === "tomtom_api" ||
     source === "geoapify_api" ||
+    source === "google_places_api" ||
     source === "openstreetmap"
   )
 }
@@ -31,12 +34,13 @@ export async function runDirectSource(
     case "geoapify_api":
       return searchGeoapify(request)
 
+    case "google_places_api":
+      return searchGooglePlaces(request)
+
     case "openstreetmap":
       return searchOpenStreetMap(request)
 
     default:
-      throw new Error(
-        `Unsupported direct source: ${source}`,
-      )
+      throw new Error(`Unsupported direct source: ${source}`)
   }
 }
