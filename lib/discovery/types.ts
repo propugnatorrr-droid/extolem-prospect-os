@@ -5,6 +5,8 @@ export type DiscoverySource =
   | "yellowpages_au"
   | "google_search_apify"
   | "openstreetmap"
+  | "google_places_api"
+
 
 export interface DiscoveryRequest {
   categories: string[]
