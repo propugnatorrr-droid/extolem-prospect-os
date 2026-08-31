@@ -8,6 +8,7 @@ import { searchYellowPagesAu } from "./sources/apify-yellowpages-au"
 import { searchGoogleApify } from "./sources/apify-google-search"
 import { searchTomTom } from "./sources/tomtom"
 import { searchGeoapify } from "./sources/geoapify"
+import { searchGooglePlaces } from "./sources/google-places"
 
 const APIFY_SOURCES: DiscoverySource[] = ["google_maps_apify", "yellowpages_au", "google_search_apify"]
 
@@ -32,6 +33,8 @@ switch (source) {
         return { source, records: await searchYellowPagesAu(request) }
       case "google_search_apify":
         return { source, records: await searchGoogleApify(request) }
+    case "google_places_api":
+  return { source, records: await searchGooglePlaces(request) }
     }
   } catch (err) {
     // Log the real cause server-side only; the UI only ever sees a generic
