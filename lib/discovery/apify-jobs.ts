@@ -36,9 +36,8 @@ function buildInput(
   switch (source) {
     case "google_maps_apify":
       return {
-        searchStringsArray: searchPhrases,
-        locationQuery: request.location,
-        maxCrawledPlacesPerSearch: Math.min(
+        searchString: searchPhrases.join(" OR "),
+        maxCrawledPlaces: Math.min(
           Math.max(request.maxResults, 10),
           100,
         ),
@@ -47,7 +46,6 @@ function buildInput(
         scrapePlaceDetailPage: true,
         scrapeReviewsPersonalData: false,
         scrapeContacts: false,
-        skipClosedPlaces: true,
       }
 
     case "yellowpages_au":
