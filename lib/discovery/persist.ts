@@ -84,10 +84,12 @@ function passesFilters(
 async function findExistingBusiness(record: NormalizedBusiness) {
   const phone = normalizePhone(record.phone)
   const website = normalizeWebsite(record.website)
-const placeId =
-  record.source === "google_maps_apify"
-    ? cleanString(record.sourceId)
-    : undefined
+const PLACE_ID_SOURCES: string[] = ["google_maps_apify", "google_places_api"]
+
+const placeId = PLACE_ID_SOURCES.includes(record.source)
+  ? cleanString(record.sourceId)
+  : undefined
+
 
   const or: Prisma.BusinessWhereInput[] = []
 
