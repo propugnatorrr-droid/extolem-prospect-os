@@ -6,6 +6,8 @@ import { searchOpenStreetMap } from "./sources/openstreetmap"
 import { searchGoogleMapsApify } from "./sources/apify-google-maps"
 import { searchYellowPagesAu } from "./sources/apify-yellowpages-au"
 import { searchGoogleApify } from "./sources/apify-google-search"
+import { searchTomTom } from "./sources/tomtom"
+import { searchGeoapify } from "./sources/geoapify"
 
 const APIFY_SOURCES: DiscoverySource[] = ["google_maps_apify", "yellowpages_au", "google_search_apify"]
 
@@ -17,9 +19,13 @@ async function runSource(
     if (APIFY_SOURCES.includes(source) && !isApifyConfigured()) {
       return { source, records: [], error: "This source is not set up yet." }
     }
-    switch (source) {
-      case "openstreetmap":
-        return { source, records: await searchOpenStreetMap(request) }
+switch (source) {
+  case "tomtom_api":
+    return { source, records: await searchTomTom(request) }
+  case "geoapify_api":
+    return { source, records: await searchGeoapify(request) }
+  case "openstreetmap":
+    return { source, records: await searchOpenStreetMap(request) }
       case "google_maps_apify":
         return { source, records: await searchGoogleMapsApify(request) }
       case "yellowpages_au":
