@@ -143,7 +143,7 @@ export async function searchOpenStreetMap(request: DiscoveryRequest): Promise<No
           "User-Agent": USER_AGENT,
         },
         body: `data=${encodeURIComponent(query)}`,
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(7_000),
         cache: "no-store",
       })
 
