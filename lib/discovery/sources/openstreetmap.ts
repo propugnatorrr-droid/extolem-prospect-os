@@ -4,7 +4,11 @@
 import type { DiscoveryRequest, NormalizedBusiness } from "../types"
 import { geocodeLocation, bboxAroundPoint } from "../geo"
 
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+const OVERPASS_URLS = [
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.nchc.org.tw/api/interpreter",
+]
 const USER_AGENT = "ExtolemProspectOS/1.0 (internal prospecting tool)"
 
 // Maps a spoken-language category to the OSM tag that actually carries it.
@@ -127,20 +131,45 @@ export async function searchOpenStreetMap(request: DiscoveryRequest): Promise<No
   const bbox = bboxAroundPoint(geo.lat, geo.lon, request.radiusKm)
   const query = buildQuery(request.categories, bbox)
 
-  const res = await fetch(OVERPASS_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": USER_AGENT,
-    },
-    body: `data=${encodeURIComponent(query)}`,
-    signal: AbortSignal.timeout(12_000),
-    cache: "no-store",
-  })
+  let data: { elements: OverpassElement[] } | null = null
+  let lastError: unknown = null
 
-  if (!res.ok) return []
+  for (const endpoint of OVERPASS_URLS) {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": USER_AGENT,
+        },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: AbortSignal.timeout(15_000),
+        cache: "no-store",
+      })
 
-  const data = (await res.json()) as { elements: OverpassElement[] }
+      if (!res.ok) {
+        lastError = new Error(
+          `OpenStreetMap returned HTTP ${res.status}`,
+        )
+        continue
+      }
+
+      data = (await res.json()) as {
+        elements: OverpassElement[]
+      }
+
+      break
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  if (!data) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("OpenStreetMap providers were unavailable")
+  }
+
   const seen = new Set<number>()
   const results: NormalizedBusiness[] = []
 
