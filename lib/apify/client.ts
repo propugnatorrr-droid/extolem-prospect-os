@@ -1,18 +1,19 @@
-// Extolem Prospect OS — thin wrapper around the Apify actor API.
-// We call actors directly by id (apify.actor(id).call(input)) rather than
-// pre-created Apify "Tasks" — one less manual setup step in the Apify console.
 import { ApifyClient } from "apify-client"
 
-let cached: ApifyClient | null = null
+let cachedClient: ApifyClient | null = null
 
 function getClient(): ApifyClient {
-  if (!process.env.APIFY_TOKEN) {
-    throw new Error("APIFY_TOKEN is not configured — add it to .env")
+  const token = process.env.APIFY_TOKEN
+
+  if (!token) {
+    throw new Error("APIFY_TOKEN is not configured")
   }
-  if (!cached) {
-    cached = new ApifyClient({ token: process.env.APIFY_TOKEN })
+
+  if (!cachedClient) {
+    cachedClient = new ApifyClient({ token })
   }
-  return cached
+
+  return cachedClient
 }
 
 export interface ApifyRunResult {
@@ -22,14 +23,12 @@ export interface ApifyRunResult {
   status: string
 }
 
-/** Runs an actor to completion and returns its dataset id. Blocks until the run finishes. */
-export async function runApifyActor(
+export async function startApifyActor(
   actorId: string,
   input: Record<string, unknown>,
-  { timeoutSecs = 300 }: { timeoutSecs?: number } = {},
 ): Promise<ApifyRunResult> {
-  const client = getClient()
-  const run = await client.actor(actorId).call(input, { timeout: timeoutSecs })
+  const run = await getClient().actor(actorId).start(input)
+
   return {
     runId: run.id,
     actorId: run.actId,
@@ -38,10 +37,51 @@ export async function runApifyActor(
   }
 }
 
-export async function readApifyDataset(datasetId: string): Promise<Record<string, unknown>[]> {
-  const client = getClient()
-  const result = await client.dataset(datasetId).listItems({ clean: true, limit: 250_000 })
+export async function getApifyRun(runId: string): Promise<ApifyRunResult | null> {
+  const run = await getClient().run(runId).get()
+
+  if (!run) {
+    return null
+  }
+
+  return {
+    runId: run.id,
+    actorId: run.actId,
+    datasetId: run.defaultDatasetId,
+    status: run.status,
+  }
+}
+
+export async function abortApifyRun(runId: string): Promise<void> {
+  await getClient().run(runId).abort()
+}
+
+export async function readApifyDataset(
+  datasetId: string,
+): Promise<Record<string, unknown>[]> {
+  const result = await getClient().dataset(datasetId).listItems({
+    clean: true,
+    limit: 10_000,
+  })
+
   return result.items as Record<string, unknown>[]
+}
+
+export async function runApifyActor(
+  actorId: string,
+  input: Record<string, unknown>,
+  { timeoutSecs = 300 }: { timeoutSecs?: number } = {},
+): Promise<ApifyRunResult> {
+  const run = await getClient().actor(actorId).call(input, {
+    timeout: timeoutSecs,
+  })
+
+  return {
+    runId: run.id,
+    actorId: run.actId,
+    datasetId: run.defaultDatasetId,
+    status: run.status,
+  }
 }
 
 export function isApifyConfigured(): boolean {
