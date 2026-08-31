@@ -30,14 +30,18 @@ const requestSchema = z.object({
   requireWebsite: z.boolean().default(false),
 })
 
-function getAutomaticSources(
-  requirePhone: boolean,
-): DiscoverySource[] {
+function automaticSources(): DiscoverySource[] {
   const sources: DiscoverySource[] = []
 
-  if (process.env.GOOGLE_PLACES_API_KEY) {
-    sources.push("google_places_api")
+  if (process.env.TOMTOM_API_KEY) {
+    sources.push("tomtom_api")
   }
+
+  if (process.env.GEOAPIFY_API_KEY) {
+    sources.push("geoapify_api")
+  }
+
+  sources.push("openstreetmap")
 
   if (
     process.env.ENABLE_APIFY === "true" &&
@@ -48,10 +52,6 @@ function getAutomaticSources(
       "yellowpages_au",
       "google_search_apify",
     )
-  }
-
-  if (!requirePhone || sources.length === 0) {
-    sources.push("openstreetmap")
   }
 
   return sources
@@ -72,9 +72,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const sources = getAutomaticSources(
-      parsed.data.requirePhone,
-    )
+    const sources = automaticSources()
 
     const discoveryRequest: DiscoveryRequest = {
       ...parsed.data,
@@ -96,7 +94,8 @@ export async function POST(request: Request) {
             discoveryRequest.minimumRating,
           minimumReviews:
             discoveryRequest.minimumReviews,
-          requirePhone: discoveryRequest.requirePhone,
+          requirePhone:
+            discoveryRequest.requirePhone,
           requireWebsite:
             discoveryRequest.requireWebsite,
         }),
@@ -111,7 +110,8 @@ export async function POST(request: Request) {
             searchRunId: searchRun.id,
             source,
             status:
-              source === "google_places_api" ||
+              source === "tomtom_api" ||
+              source === "geoapify_api" ||
               source === "openstreetmap"
                 ? "pending"
                 : "starting",
@@ -121,9 +121,10 @@ export async function POST(request: Request) {
     )
 
     const apifyRuns = sourceRuns.filter(
-      (sourceRun) =>
-        sourceRun.source !== "google_places_api" &&
-        sourceRun.source !== "openstreetmap",
+      (source) =>
+        source.source === "google_maps_apify" ||
+        source.source === "yellowpages_au" ||
+        source.source === "google_search_apify",
     )
 
     await Promise.allSettled(
