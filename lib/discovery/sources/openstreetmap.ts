@@ -46,6 +46,15 @@ const CATEGORY_TAG_MAP: Record<string, { tag: string; value: string }> = {
   bakery: { tag: "shop", value: "bakery" },
   cleaner: { tag: "office", value: "cleaning" },
   cleaning: { tag: "office", value: "cleaning" },
+    hotel: { tag: "tourism", value: "hotel" },
+  hotels: { tag: "tourism", value: "hotel" },
+  motel: { tag: "tourism", value: "motel" },
+  motels: { tag: "tourism", value: "motel" },
+  accommodation: { tag: "tourism", value: "hotel" },
+  resort: { tag: "tourism", value: "resort" },
+  resorts: { tag: "tourism", value: "resort" },
+  hostel: { tag: "tourism", value: "hostel" },
+  hostels: { tag: "tourism", value: "hostel" },
 }
 
 function lookupCategoryTag(category: string): { tag: string; value: string } | null {
