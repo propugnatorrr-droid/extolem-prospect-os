@@ -3,16 +3,16 @@
   "version": "1.0.0",
   "description": "Private prospecting tool for Extolem",
   "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "npx prisma generate && npx prisma db push && next build",
-    "start": "next start",
-    "lint": "next lint",
-    "db:push": "npx prisma db push",
-    "db:seed": "npx tsx prisma/seed.ts",
-    "db:studio": "npx prisma studio",
-    "db:reset": "npx prisma db push --force-reset"
-  },
+"scripts": {
+  "dev": "next dev",
+  "build": "npx prisma generate && npx prisma db execute --file prisma/pre-deploy.sql --schema prisma/schema.prisma && npx prisma db push && next build",
+  "start": "next start",
+  "lint": "next lint",
+  "db:push": "npx prisma db push",
+  "db:seed": "npx tsx prisma/seed.ts",
+  "db:studio": "npx prisma studio",
+  "db:reset": "npx prisma db push --force-reset"
+},
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "@radix-ui/react-accordion": "^1.2.2",
