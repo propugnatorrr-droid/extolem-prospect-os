@@ -141,8 +141,14 @@ export async function parseSearchIntent(text: string): Promise<ParsedSearchInten
     location: result.location || ctx.homeLocation,
     radiusKm: result.radiusKm && result.radiusKm > 0 ? Math.min(result.radiusKm, 500) : 35,
     maxResults: result.maxResults && result.maxResults > 0 ? Math.min(result.maxResults, 200) : 50,
-    minimumRating: result.minimumRating,
-    minimumReviews: result.minimumReviews,
+    minimumRating:
+      typeof result.minimumRating === "number"
+        ? result.minimumRating
+        : undefined,
+    minimumReviews:
+      typeof result.minimumReviews === "number"
+        ? result.minimumReviews
+        : undefined,
     requirePhone: result.requirePhone ?? true,
     requireWebsite: result.requireWebsite ?? false,
     summary: result.summary || `Searching for ${result.categories!.join(", ")} near ${result.location || ctx.homeLocation}.`,
