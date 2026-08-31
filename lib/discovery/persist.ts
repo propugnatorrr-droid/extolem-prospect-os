@@ -82,9 +82,8 @@ function passesFilters(
   return true
 }
 
-const PLACE_ID_SOURCES: string[] = ["google_maps_apify", "google_places_api"]
-
 async function findExistingBusiness(record: NormalizedBusiness) {
+
   const phone = normalizePhone(record.phone)
   const website = normalizeWebsite(record.website)
 
