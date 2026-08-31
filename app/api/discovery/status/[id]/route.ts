@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import {
+  abortApifyRun,
   getApifyRun,
   readApifyDataset,
 } from "@/lib/apify/client"
 import { normalizeApifyItems } from "@/lib/discovery/apify-normalize"
+import {
+  isDirectSource,
+  runDirectSource,
+} from "@/lib/discovery/direct-sources"
+import { isApifySource } from "@/lib/discovery/apify-jobs"
 import { persistBusinesses } from "@/lib/discovery/persist"
-import { searchGooglePlaces } from "@/lib/discovery/sources/google-places"
-import { searchOpenStreetMap } from "@/lib/discovery/sources/openstreetmap"
 import type {
   DiscoveryRequest,
   DiscoverySource,
@@ -17,6 +21,8 @@ export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
+const SEARCH_TIMEOUT_MS = 180_000
+
 const FAILED_STATUSES = new Set([
   "failed",
   "aborted",
@@ -24,10 +30,17 @@ const FAILED_STATUSES = new Set([
   "timed_out",
 ])
 
-function parseJson<T>(
-  value: string | null,
-  fallback: T,
-): T {
+interface SourceRunSummary {
+  id: string
+  searchRunId: string
+  source: string
+  status: string
+  imported: boolean
+  providerRunId: string | null
+  datasetId: string | null
+}
+
+function parseJson<T>(value: string | null, fallback: T): T {
   if (!value) return fallback
 
   try {
@@ -37,7 +50,7 @@ function parseJson<T>(
   }
 }
 
-function normalizedStatus(status: string): string {
+function normalizeStatus(status: string): string {
   return status.toLowerCase().replaceAll("_", "-")
 }
 
@@ -47,8 +60,14 @@ function sourceFinished(source: {
 }): boolean {
   return (
     source.imported ||
-    FAILED_STATUSES.has(normalizedStatus(source.status))
+    FAILED_STATUSES.has(normalizeStatus(source.status))
   )
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message
+    ? error.message
+    : fallback
 }
 
 function buildRequest(searchRun: {
@@ -69,7 +88,7 @@ function buildRequest(searchRun: {
       [],
     ),
     location: searchRun.location,
-    radiusKm: searchRun.radiusKm || 35,
+    radiusKm: searchRun.radiusKm ?? 35,
     sources: parseJson<DiscoverySource[]>(
       searchRun.sources,
       [],
@@ -97,44 +116,64 @@ function buildRequest(searchRun: {
   }
 }
 
+async function countResults(searchRunId: string): Promise<number> {
+  return prisma.searchRunBusiness.count({
+    where: { searchRunId },
+  })
+}
+
 async function failSource(
-  id: string,
+  sourceRunId: string,
   error: unknown,
 ): Promise<void> {
   await prisma.sourceRun.update({
-    where: { id },
+    where: { id: sourceRunId },
     data: {
       status: "failed",
-      error:
-        error instanceof Error
-          ? error.message
-          : "Source failed",
+      imported: false,
+      error: errorMessage(
+        error,
+        "The discovery source failed.",
+      ),
       completedAt: new Date(),
     },
   })
 }
 
 async function processDirectSource(
-  sourceRun: {
-    id: string
-    searchRunId: string
-    source: string
-  },
+  sourceRun: SourceRunSummary,
   request: DiscoveryRequest,
 ): Promise<void> {
-  await prisma.sourceRun.update({
-    where: { id: sourceRun.id },
+  const source = sourceRun.source as DiscoverySource
+
+  if (!isDirectSource(source)) return
+  if (sourceFinished(sourceRun)) return
+
+  /*
+   * Claim the source before processing it. This prevents two simultaneous
+   * browser polling requests from running the same direct provider twice.
+   */
+  const claimed = await prisma.sourceRun.updateMany({
+    where: {
+      id: sourceRun.id,
+      imported: false,
+      status: {
+        in: ["pending", "starting"],
+      },
+    },
     data: {
       status: "running",
       error: null,
     },
   })
 
+  if (claimed.count === 0) return
+
   try {
-    const records =
-      sourceRun.source === "google_places_api"
-        ? await searchGooglePlaces(request)
-        : await searchOpenStreetMap(request)
+    const records = await runDirectSource(
+      source,
+      request,
+    )
 
     const resultCount = await persistBusinesses(
       sourceRun.searchRunId,
@@ -150,38 +189,44 @@ async function processDirectSource(
         importedCount: records.length,
         importedAt: new Date(),
         completedAt: new Date(),
+        error: null,
       },
     })
 
     await prisma.searchRun.update({
       where: { id: sourceRun.searchRunId },
-      data: { resultCount },
+      data: {
+        status: "running",
+        resultCount,
+        error: null,
+      },
     })
   } catch (error) {
     console.error(
-      `${sourceRun.source} discovery failed:`,
+      `${sourceRun.source} direct discovery failed:`,
       error,
     )
+
     await failSource(sourceRun.id, error)
   }
 }
 
 async function processApifySource(
-  sourceRun: {
-    id: string
-    searchRunId: string
-    source: string
-    providerRunId: string | null
-    imported: boolean
-  },
+  sourceRun: SourceRunSummary,
   request: DiscoveryRequest,
 ): Promise<void> {
+  const source = sourceRun.source as DiscoverySource
+
+  if (!isApifySource(source)) return
   if (sourceRun.imported) return
+  if (FAILED_STATUSES.has(normalizeStatus(sourceRun.status))) {
+    return
+  }
 
   if (!sourceRun.providerRunId) {
     await failSource(
       sourceRun.id,
-      new Error("Provider run was not created"),
+      new Error("The provider run was not created."),
     )
     return
   }
@@ -194,38 +239,57 @@ async function processApifySource(
     if (!remoteRun) {
       await failSource(
         sourceRun.id,
-        new Error("Provider run could not be found"),
+        new Error("The provider run could not be found."),
       )
       return
     }
 
-    const status = normalizedStatus(remoteRun.status)
+    const remoteStatus = normalizeStatus(
+      remoteRun.status,
+    )
 
-    if (FAILED_STATUSES.has(status)) {
+    if (FAILED_STATUSES.has(remoteStatus)) {
       await failSource(
         sourceRun.id,
-        new Error(`Provider finished with ${status}`),
+        new Error(
+          `The provider finished with status ${remoteStatus}.`,
+        ),
       )
       return
     }
 
-    if (status !== "succeeded") {
+    if (remoteStatus !== "succeeded") {
       await prisma.sourceRun.update({
         where: { id: sourceRun.id },
         data: {
-          status,
-          datasetId: remoteRun.datasetId,
+          status: remoteStatus,
+          datasetId:
+            remoteRun.datasetId ||
+            sourceRun.datasetId,
+          error: null,
         },
       })
+
       return
     }
 
-    const items = await readApifyDataset(
-      remoteRun.datasetId,
-    )
+    const datasetId =
+      remoteRun.datasetId || sourceRun.datasetId
+
+    if (!datasetId) {
+      await failSource(
+        sourceRun.id,
+        new Error(
+          "The provider completed without a dataset.",
+        ),
+      )
+      return
+    }
+
+    const items = await readApifyDataset(datasetId)
 
     const records = normalizeApifyItems(
-      sourceRun.source as DiscoverySource,
+      source,
       items,
     )
 
@@ -241,19 +305,125 @@ async function processApifySource(
         status: "succeeded",
         imported: true,
         importedCount: records.length,
-        datasetId: remoteRun.datasetId,
+        datasetId,
         importedAt: new Date(),
         completedAt: new Date(),
+        error: null,
       },
     })
 
     await prisma.searchRun.update({
       where: { id: sourceRun.searchRunId },
-      data: { resultCount },
+      data: {
+        status: "running",
+        resultCount,
+        error: null,
+      },
     })
   } catch (error) {
+    console.error(
+      `${sourceRun.source} Apify discovery failed:`,
+      error,
+    )
+
     await failSource(sourceRun.id, error)
   }
+}
+
+async function stopUnfinishedSources(
+  sourceRuns: SourceRunSummary[],
+  reason: string,
+): Promise<void> {
+  const unfinished = sourceRuns.filter(
+    (sourceRun) => !sourceFinished(sourceRun),
+  )
+
+  await Promise.allSettled(
+    unfinished.map(async (sourceRun) => {
+      const source =
+        sourceRun.source as DiscoverySource
+
+      if (
+        isApifySource(source) &&
+        sourceRun.providerRunId
+      ) {
+        try {
+          await abortApifyRun(
+            sourceRun.providerRunId,
+          )
+        } catch (error) {
+          console.warn(
+            `Could not abort ${sourceRun.source}:`,
+            error,
+          )
+        }
+      }
+
+      await prisma.sourceRun.updateMany({
+        where: {
+          id: sourceRun.id,
+          imported: false,
+          status: {
+            notIn: [
+              "failed",
+              "aborted",
+              "timed-out",
+              "timed_out",
+            ],
+          },
+        },
+        data: {
+          status: "aborted",
+          error: reason,
+          completedAt: new Date(),
+        },
+      })
+    }),
+  )
+}
+
+async function timeoutUnfinishedSources(
+  searchRunId: string,
+): Promise<void> {
+  await prisma.sourceRun.updateMany({
+    where: {
+      searchRunId,
+      imported: false,
+      status: {
+        notIn: [
+          "failed",
+          "aborted",
+          "timed-out",
+          "timed_out",
+        ],
+      },
+    },
+    data: {
+      status: "timed-out",
+      error:
+        "The provider exceeded the search time limit.",
+      completedAt: new Date(),
+    },
+  })
+}
+
+function statusResponse(
+  searchRunId: string,
+  status: string,
+  resultCount: number,
+  sourceRuns: Array<{
+    imported: boolean
+    status: string
+  }>,
+) {
+  return NextResponse.json({
+    searchRunId,
+    status,
+    resultCount,
+    completedSources:
+      sourceRuns.filter(sourceFinished).length,
+    totalSources: sourceRuns.length,
+  })
 }
 
 export async function GET(
@@ -262,204 +432,253 @@ export async function GET(
 ) {
   try {
     const searchRun = await prisma.searchRun.findUnique({
-      where: { id: context.params.id },
+      where: {
+        id: context.params.id,
+      },
       include: {
         sourceRuns: {
-          orderBy: { createdAt: "asc" },
+          orderBy: {
+            createdAt: "asc",
+          },
         },
       },
     })
 
     if (!searchRun) {
       return NextResponse.json(
-        { error: "Search not found." },
-        { status: 404 },
+        {
+          error: "Search not found.",
+        },
+        {
+          status: 404,
+        },
       )
     }
 
+    /*
+     * Completed and failed searches do not need to call any
+     * external providers again.
+     */
     if (
       searchRun.status === "completed" ||
       searchRun.status === "failed"
     ) {
-      return NextResponse.json({
-        searchRunId: searchRun.id,
-        status: searchRun.status,
-        resultCount: searchRun.resultCount,
-        completedSources:
-          searchRun.sourceRuns.filter(sourceFinished).length,
-        totalSources: searchRun.sourceRuns.length,
+      return statusResponse(
+        searchRun.id,
+        searchRun.status,
+        searchRun.resultCount,
+        searchRun.sourceRuns,
+      )
+    }
+
+    const discoveryRequest =
+      buildRequest(searchRun)
+
+    /*
+     * Run all free direct providers concurrently:
+     * - TomTom
+     * - Geoapify
+     * - OpenStreetMap
+     *
+     * One provider failing will not stop the others.
+     */
+    const directSources =
+      searchRun.sourceRuns.filter((sourceRun) => {
+        const source =
+          sourceRun.source as DiscoverySource
+
+        return (
+          isDirectSource(source) &&
+          !sourceFinished(sourceRun)
+        )
       })
-    }
-
-    const discoveryRequest = buildRequest(searchRun)
-
-    const googlePlaces =
-      searchRun.sourceRuns.find(
-        (source) =>
-          source.source === "google_places_api" &&
-          source.status === "pending",
-      )
-
-    if (googlePlaces) {
-      await processDirectSource(
-        {
-          id: googlePlaces.id,
-          searchRunId: searchRun.id,
-          source: googlePlaces.source,
-        },
-        discoveryRequest,
-      )
-    }
-
-    const apifySources =
-      searchRun.sourceRuns.filter(
-        (source) =>
-          ![
-            "google_places_api",
-            "openstreetmap",
-          ].includes(source.source) &&
-          !sourceFinished(source),
-      )
 
     await Promise.allSettled(
-      apifySources.map((source) =>
-        processApifySource(
+      directSources.map((sourceRun) =>
+        processDirectSource(
           {
-            id: source.id,
-            searchRunId: source.searchRunId,
-            source: source.source,
-            providerRunId: source.providerRunId,
-            imported: source.imported,
+            id: sourceRun.id,
+            searchRunId:
+              sourceRun.searchRunId,
+            source: sourceRun.source,
+            status: sourceRun.status,
+            imported: sourceRun.imported,
+            providerRunId:
+              sourceRun.providerRunId,
+            datasetId:
+              sourceRun.datasetId,
           },
           discoveryRequest,
         ),
       ),
     )
 
-    let refreshed =
-      await prisma.sourceRun.findMany({
-        where: { searchRunId: searchRun.id },
-        orderBy: { createdAt: "asc" },
+    /*
+     * Poll all enabled Apify providers concurrently.
+     * With ENABLE_APIFY=false this list will normally be empty.
+     */
+    const apifySources =
+      searchRun.sourceRuns.filter((sourceRun) => {
+        const source =
+          sourceRun.source as DiscoverySource
+
+        return (
+          isApifySource(source) &&
+          !sourceFinished(sourceRun)
+        )
       })
 
-    let resultCount =
-      await prisma.searchRunBusiness.count({
-        where: { searchRunId: searchRun.id },
-      })
-
-    const otherSourcesFinished = refreshed
-      .filter(
-        (source) => source.source !== "openstreetmap",
-      )
-      .every(sourceFinished)
-
-    const openStreetMap = refreshed.find(
-      (source) =>
-        source.source === "openstreetmap" &&
-        source.status === "pending",
+    await Promise.allSettled(
+      apifySources.map((sourceRun) =>
+        processApifySource(
+          {
+            id: sourceRun.id,
+            searchRunId:
+              sourceRun.searchRunId,
+            source: sourceRun.source,
+            status: sourceRun.status,
+            imported: sourceRun.imported,
+            providerRunId:
+              sourceRun.providerRunId,
+            datasetId:
+              sourceRun.datasetId,
+          },
+          discoveryRequest,
+        ),
+      ),
     )
 
-    if (
-      openStreetMap &&
-      otherSourcesFinished &&
-      resultCount < discoveryRequest.maxResults
-    ) {
-      await processDirectSource(
-        {
-          id: openStreetMap.id,
+    let refreshedSources =
+      await prisma.sourceRun.findMany({
+        where: {
           searchRunId: searchRun.id,
-          source: openStreetMap.source,
         },
-        discoveryRequest,
+        orderBy: {
+          createdAt: "asc",
+        },
+      })
+
+    let resultCount = await countResults(
+      searchRun.id,
+    )
+
+    const targetReached =
+      resultCount >= discoveryRequest.maxResults
+
+    /*
+     * Stop unused paid/remote jobs once the requested result target
+     * has been reached.
+     */
+    if (targetReached) {
+      await stopUnfinishedSources(
+        refreshedSources,
+        "The requested number of businesses was reached.",
       )
 
-      refreshed =
+      refreshedSources =
         await prisma.sourceRun.findMany({
-          where: { searchRunId: searchRun.id },
-          orderBy: { createdAt: "asc" },
-        })
-
-      resultCount =
-        await prisma.searchRunBusiness.count({
-          where: { searchRunId: searchRun.id },
+          where: {
+            searchRunId: searchRun.id,
+          },
+          orderBy: {
+            createdAt: "asc",
+          },
         })
     }
 
     const stale =
-      Date.now() - searchRun.createdAt.getTime() > 180_000
+      Date.now() -
+        searchRun.createdAt.getTime() >
+      SEARCH_TIMEOUT_MS
 
-    const allFinished =
-      refreshed.every(sourceFinished)
+    if (stale && !targetReached) {
+      await timeoutUnfinishedSources(
+        searchRun.id,
+      )
 
-    let status: "running" | "completed" | "failed" =
-      "running"
-
-    if (allFinished || stale) {
-      status = resultCount > 0 ? "completed" : "failed"
-
-      if (stale) {
-        await prisma.sourceRun.updateMany({
+      refreshedSources =
+        await prisma.sourceRun.findMany({
           where: {
             searchRunId: searchRun.id,
-            imported: false,
-            status: {
-              notIn: [
-                "failed",
-                "aborted",
-                "timed-out",
-                "timed_out",
-              ],
-            },
           },
-          data: {
-            status: "timed-out",
-            error: "Provider exceeded the search limit",
-            completedAt: new Date(),
+          orderBy: {
+            createdAt: "asc",
           },
         })
-      }
+    }
+
+    resultCount = await countResults(
+      searchRun.id,
+    )
+
+    const allFinished =
+      refreshedSources.length === 0 ||
+      refreshedSources.every(sourceFinished)
+
+    let finalStatus:
+      | "running"
+      | "completed"
+      | "failed" = "running"
+
+    if (
+      targetReached ||
+      allFinished ||
+      stale
+    ) {
+      finalStatus =
+        resultCount > 0
+          ? "completed"
+          : "failed"
 
       await prisma.searchRun.update({
-        where: { id: searchRun.id },
+        where: {
+          id: searchRun.id,
+        },
         data: {
-          status,
+          status: finalStatus,
           resultCount,
           completedAt: new Date(),
           error:
-            status === "failed"
-              ? "No usable results were returned."
+            finalStatus === "failed"
+              ? "No usable businesses were returned by the available free providers."
               : null,
         },
       })
     } else {
       await prisma.searchRun.update({
-        where: { id: searchRun.id },
+        where: {
+          id: searchRun.id,
+        },
         data: {
           status: "running",
           resultCount,
+          error: null,
         },
       })
     }
 
-    return NextResponse.json({
-      searchRunId: searchRun.id,
-      status,
+    return statusResponse(
+      searchRun.id,
+      finalStatus,
       resultCount,
-      completedSources:
-        refreshed.filter(sourceFinished).length,
-      totalSources: refreshed.length,
-    })
+      refreshedSources,
+    )
   } catch (error) {
-    console.error("Discovery status failed:", error)
+    console.error(
+      "Discovery status failed:",
+      error,
+    )
 
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Search status could not be checked.",
+        error: errorMessage(
+          error,
+          "Search status could not be checked.",
+        ),
       },
-      { status: 500 },
+      {
+        status: 500,
+      },
     )
   }
 }
