@@ -120,9 +120,15 @@ export async function searchOpenStreetMap(request: DiscoveryRequest): Promise<No
 
   const res = await fetch(OVERPASS_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": USER_AGENT,
+    },
     body: `data=${encodeURIComponent(query)}`,
+    signal: AbortSignal.timeout(12_000),
+    cache: "no-store",
   })
+
   if (!res.ok) return []
 
   const data = (await res.json()) as { elements: OverpassElement[] }
