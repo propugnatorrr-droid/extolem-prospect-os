@@ -4,27 +4,71 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL") // pooled (pgbouncer) — used for normal queries
-  directUrl = env("DATABASE_URL_UNPOOLED") // direct — used for db push/migrate
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model SearchRun {
-  id          String     @id @default(cuid())
-  query       String     // raw natural-language request
-  categories  String     // JSON array
+  id          String   @id @default(cuid())
+  query       String
+  categories  String
   location    String
   radiusKm    Float?
-  sources     String     // JSON array of source ids used
-  status      String     @default("running") // running, completed, failed
-  resultCount Int        @default(0)
+  sources     String
+  filters     String?
+  status      String   @default("starting")
+  resultCount Int      @default(0)
   error       String?
-  businesses  Business[]
-  createdAt   DateTime   @default(now())
+
+  sourceRuns SourceRun[]
+  businesses SearchRunBusiness[]
+
+  legacyBusinesses Business[] @relation("LegacySearchRun")
+
+  createdAt   DateTime  @default(now())
   completedAt DateTime?
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SourceRun {
+  id            String    @id @default(cuid())
+  searchRunId   String
+  searchRun     SearchRun @relation(fields: [searchRunId], references: [id], onDelete: Cascade)
+
+  source        String
+  providerRunId String?   @unique
+  datasetId     String?
+  status        String    @default("starting")
+  imported      Boolean   @default(false)
+  importedCount Int       @default(0)
+  error         String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+  importedAt  DateTime?
+
+  @@index([searchRunId])
+  @@index([status])
+}
+
+model SearchRunBusiness {
+  searchRunId String
+  businessId  String
+
+  searchRun SearchRun @relation(fields: [searchRunId], references: [id], onDelete: Cascade)
+  business  Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([searchRunId, businessId])
+  @@index([businessId])
 }
 
 model Business {
-  id          String    @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
   category    String?
   phone       String?
@@ -33,20 +77,21 @@ model Business {
   suburb      String?
   state       String?
   postcode    String?
-  country     String    @default("AU")
+  country     String  @default("AU")
   latitude    Float?
   longitude   Float?
   rating      Float?
   reviewCount Int?
-  placeId     String?   @unique
+  placeId     String? @unique
   abn         String?
-  status      String    @default("new") // new, saved, contacted, qualified, not_interested, do_not_contact
+  status      String  @default("new")
   notes       String?
-  metadata    String?   // JSON blob for anything not modeled yet
+  metadata    String?
 
   searchRunId String?
-  searchRun   SearchRun? @relation(fields: [searchRunId], references: [id])
+  searchRun   SearchRun? @relation("LegacySearchRun", fields: [searchRunId], references: [id])
 
+  searchRuns    SearchRunBusiness[]
   sources       BusinessSource[]
   contacts      Contact[]
   opportunities Opportunity[]
@@ -60,19 +105,22 @@ model Business {
   @@index([suburb])
   @@index([postcode])
   @@index([status])
+  @@index([name])
 }
 
 model BusinessSource {
   id         String   @id @default(cuid())
   businessId String
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  source     String   // google_maps_apify, yellowpages_au, openstreetmap, google_search
-  sourceId   String?
-  sourceUrl  String?
-  raw        String?  // JSON snapshot of the original record
-  fetchedAt  DateTime @default(now())
+
+  source    String
+  sourceId  String?
+  sourceUrl String?
+  raw       String?
+  fetchedAt DateTime @default(now())
 
   @@index([businessId])
+  @@index([source])
   @@unique([businessId, source, sourceId])
 }
 
@@ -80,22 +128,28 @@ model Contact {
   id         String   @id @default(cuid())
   businessId String
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  type       String   // phone, mobile, email, facebook, instagram, linkedin, booking_url, contact_form
+
+  type       String
   value      String
   label      String?
+  sourceUrl  String?
+  confidence Float?
   createdAt  DateTime @default(now())
 
   @@index([businessId])
+  @@index([type])
+  @@unique([businessId, type, value])
 }
 
 model WebsiteAudit {
   id         String   @id @default(cuid())
   businessId String
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  url        String
-  findings   String   // JSON array of AuditFinding
-  score      Int?
-  createdAt  DateTime @default(now())
+
+  url      String
+  findings String
+  score    Int?
+  createdAt DateTime @default(now())
 
   @@index([businessId])
 }
@@ -104,10 +158,11 @@ model Opportunity {
   id         String   @id @default(cuid())
   businessId String
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  offer      String   // website, ai_chatbot, ai_receptionist, review_automation, seo, erp, etc.
+
+  offer      String
   score      Int
   confidence Float
-  reasons    String   // JSON array of strings
+  reasons    String
   createdAt  DateTime @default(now())
 
   @@index([businessId])
