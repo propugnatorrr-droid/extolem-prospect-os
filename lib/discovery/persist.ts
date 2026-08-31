@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import type { DiscoveryRequest, NormalizedBusiness } from "./types"
 import { enrichWebsiteContacts } from "@/lib/enrichment/website-contact"
+const PLACE_ID_SOURCES: string[] = ["google_maps_apify", "google_places_api"]
 
 function cleanString(value?: string): string | undefined {
   if (!value) return undefined
@@ -81,14 +82,16 @@ function passesFilters(
   return true
 }
 
+const PLACE_ID_SOURCES: string[] = ["google_maps_apify", "google_places_api"]
+
 async function findExistingBusiness(record: NormalizedBusiness) {
   const phone = normalizePhone(record.phone)
   const website = normalizeWebsite(record.website)
-const PLACE_ID_SOURCES: string[] = ["google_maps_apify", "google_places_api"]
 
-const placeId = PLACE_ID_SOURCES.includes(record.source)
-  ? cleanString(record.sourceId)
-  : undefined
+  const placeId = PLACE_ID_SOURCES.includes(record.source)
+    ? cleanString(record.sourceId)
+    : undefined
+
 
 
   const or: Prisma.BusinessWhereInput[] = []
@@ -127,11 +130,10 @@ const placeId = PLACE_ID_SOURCES.includes(record.source)
 async function createOrMergeBusiness(record: NormalizedBusiness) {
   const normalizedPhone = normalizePhone(record.phone)
   const normalizedWebsite = normalizeWebsite(record.website)
-  const placeId =
-(record.source === "google_maps_apify" ||
-  record.source === "google_places_api")
-      ? cleanString(record.sourceId)
-      : undefined
+  const placeId = PLACE_ID_SOURCES.includes(record.source)
+    ? cleanString(record.sourceId)
+    : undefined
+
 
   const existing = await findExistingBusiness({
     ...record,
