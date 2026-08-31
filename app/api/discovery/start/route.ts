@@ -32,7 +32,9 @@ const requestSchema = z.object({
 
 function automaticSources(): DiscoverySource[] {
   const sources: DiscoverySource[] = []
-
+if (process.env.GOOGLE_PLACES_API_KEY) {
+  sources.push("google_places_api")
+}
   if (process.env.TOMTOM_API_KEY) {
     sources.push("tomtom_api")
   }
@@ -110,9 +112,10 @@ export async function POST(request: Request) {
             searchRunId: searchRun.id,
             source,
             status:
-              source === "tomtom_api" ||
-              source === "geoapify_api" ||
-              source === "openstreetmap"
+source === "tomtom_api" ||
+source === "geoapify_api" ||
+source === "google_places_api" ||
+source === "openstreetmap"
                 ? "pending"
                 : "starting",
           },
