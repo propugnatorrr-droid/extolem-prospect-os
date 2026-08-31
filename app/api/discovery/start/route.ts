@@ -23,8 +23,15 @@ const requestSchema = z.object({
   location: z.string().trim().min(2),
   radiusKm: z.number().min(1).max(500).default(35),
   maxResults: z.number().int().min(1).max(500).default(50),
-  minimumRating: z.number().min(0).max(5).optional(),
-  minimumReviews: z.number().int().min(0).optional(),
+  minimumRating: z.preprocess(
+    (value) => value === null || value === "" ? undefined : value,
+    z.coerce.number().min(0).max(5).optional(),
+  ),
+  minimumReviews: z.preprocess(
+    (value) => value === null || value === "" ? undefined : value,
+    z.coerce.number().int().min(0).optional(),
+  ),
+
   requirePhone: z.boolean().default(true),
   requireWebsite: z.boolean().default(false),
 })
