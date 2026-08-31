@@ -1,5 +1,6 @@
 export type DiscoverySource =
-  | "google_places_api"
+  | "tomtom_api"
+  | "geoapify_api"
   | "google_maps_apify"
   | "yellowpages_au"
   | "google_search_apify"
