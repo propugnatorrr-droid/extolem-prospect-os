@@ -15,7 +15,7 @@ const requestSchema = z.object({
   categories: z.array(z.string().trim().min(2)).min(1).max(8),
   location: z.string().trim().min(2),
   radiusKm: z.coerce.number().min(1).max(500).default(35),
-  maxResults: z.coerce.number().int().min(1).max(500).default(50),
+  maxResults: z.coerce.number().int().min(1).max(200).default(50),
   minimumRating: z.preprocess(
     (value) =>
       value === null || value === "" ? undefined : value,
@@ -30,16 +30,27 @@ const requestSchema = z.object({
   requireWebsite: z.boolean().default(false),
 })
 
-function automaticSources(
-  request: z.infer<typeof requestSchema>,
+function getAutomaticSources(
+  requirePhone: boolean,
 ): DiscoverySource[] {
-  const sources: DiscoverySource[] = [
-    "google_maps_apify",
-    "yellowpages_au",
-    "google_search_apify",
-  ]
+  const sources: DiscoverySource[] = []
 
-  if (!request.requirePhone) {
+  if (process.env.GOOGLE_PLACES_API_KEY) {
+    sources.push("google_places_api")
+  }
+
+  if (
+    process.env.ENABLE_APIFY === "true" &&
+    process.env.APIFY_TOKEN
+  ) {
+    sources.push(
+      "google_maps_apify",
+      "yellowpages_au",
+      "google_search_apify",
+    )
+  }
+
+  if (!requirePhone || sources.length === 0) {
     sources.push("openstreetmap")
   }
 
@@ -54,13 +65,16 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       return NextResponse.json(
         {
-          error: "Check the business type and location, then try again.",
+          error:
+            "Check the business type and location, then try again.",
         },
         { status: 400 },
       )
     }
 
-    const sources = automaticSources(parsed.data)
+    const sources = getAutomaticSources(
+      parsed.data.requirePhone,
+    )
 
     const discoveryRequest: DiscoveryRequest = {
       ...parsed.data,
@@ -70,16 +84,21 @@ export async function POST(request: Request) {
     const searchRun = await prisma.searchRun.create({
       data: {
         query: discoveryRequest.categories.join(", "),
-        categories: JSON.stringify(discoveryRequest.categories),
+        categories: JSON.stringify(
+          discoveryRequest.categories,
+        ),
         location: discoveryRequest.location,
         radiusKm: discoveryRequest.radiusKm,
         sources: JSON.stringify(sources),
         filters: JSON.stringify({
           maxResults: discoveryRequest.maxResults,
-          minimumRating: discoveryRequest.minimumRating,
-          minimumReviews: discoveryRequest.minimumReviews,
+          minimumRating:
+            discoveryRequest.minimumRating,
+          minimumReviews:
+            discoveryRequest.minimumReviews,
           requirePhone: discoveryRequest.requirePhone,
-          requireWebsite: discoveryRequest.requireWebsite,
+          requireWebsite:
+            discoveryRequest.requireWebsite,
         }),
         status: "starting",
       },
@@ -92,6 +111,7 @@ export async function POST(request: Request) {
             searchRunId: searchRun.id,
             source,
             status:
+              source === "google_places_api" ||
               source === "openstreetmap"
                 ? "pending"
                 : "starting",
@@ -101,7 +121,9 @@ export async function POST(request: Request) {
     )
 
     const apifyRuns = sourceRuns.filter(
-      (sourceRun) => sourceRun.source !== "openstreetmap",
+      (sourceRun) =>
+        sourceRun.source !== "google_places_api" &&
+        sourceRun.source !== "openstreetmap",
     )
 
     await Promise.allSettled(
@@ -121,11 +143,6 @@ export async function POST(request: Request) {
             },
           })
         } catch (error) {
-          console.error(
-            `Could not start ${sourceRun.source}:`,
-            error,
-          )
-
           await prisma.sourceRun.update({
             where: { id: sourceRun.id },
             data: {
@@ -150,7 +167,6 @@ export async function POST(request: Request) {
       {
         searchRunId: searchRun.id,
         status: "running",
-        message: "Your prospecting run has started.",
       },
       { status: 202 },
     )
