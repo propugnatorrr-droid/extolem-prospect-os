@@ -1,4 +1,4 @@
-import { chatJson } from "@/lib/ai/groq"
+import { chatJson } from "@/lib/ai/openrouter"
 import { getOperatorProfile } from "@/lib/operator/profile"
 import { getCurrentWeather, weatherLabel } from "@/lib/operator/weather"
 import { prisma } from "@/lib/db"
